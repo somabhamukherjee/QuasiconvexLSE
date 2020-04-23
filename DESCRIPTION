@@ -1,0 +1,24 @@
+Package: QuasiconvexLSE
+Type: Package
+Title: Doubly robust estimators with a high-dimensional set of confounders
+Version: 0.0.1
+Date: 2020-04-15
+Author: Somabha Mukherjee and Rohit K. Patra
+Maintainer: Somabha Mukherjee <somabha@upenn.edu>
+Description: FILL
+License: GPL (>= 2)
+LazyData: TRUE
+URL: https://github.com/somabhamukherjee/QuasiconvexLSE
+BugReports: https://github.com/somabhamukherjee/QuasiconvexLSE/issues
+RoxygenNote: 7.1.0
+Suggests:
+    ggplot2,
+    knitr,
+    rmarkdown,
+    testthat
+VignetteBuilder: knitr
+Imports:
+    mvtnorm,
+    statmod,
+    truncnorm,
+    splines
