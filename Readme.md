@@ -1,5 +1,5 @@
 # DoublyRobustHD
-This is an R package to implement methods seen in "Least Squares Estimation Of A Monotone Quasiconvex
+This is an R package to compute the multivariate quasiconvex (and decreasing) nonparametric LSE as described in "Least Squares Estimation Of A Monotone Quasiconvex
 regression Function" by Somabha Mukherjee, Rohit K. Patra, Andrew L. Johnson, And Hiroshi Morita, which can be found at the following link:
 
 https://arxiv.org/abs/2003.04433
