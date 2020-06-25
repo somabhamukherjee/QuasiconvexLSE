@@ -12,6 +12,8 @@ install_github(repo = "somabhamukherjee/QuasiconvexLSE")
 library(QuasiconvexLSE)
 ```
 
+Note that the above package requires CPLEX and the R-package RCPLEX. 
+
 **References**
 
 Somabha Mukherjee, Rohit K. Patra, Andrew L. Johnson, and Hiroshi Morita. **Least Squares Estimation of a Monotone Quasiconvex Regression Function**. 2020. arXiv:2003.04433
