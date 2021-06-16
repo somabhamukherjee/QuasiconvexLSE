@@ -14,10 +14,8 @@
 #' @param Max.b          Bound on the absolute values of the variables.
 #' @param MM             The 'M' parameter in the big-M method applied by us.
 #' @param ep             A small positive quantity to convert open constraints to close constraints.
-#' @param time.limit     Time limit in seconds of call to optimizer. Can be any nonnegative number.   
+#' @param time.limit     Time limit in seconds of call to optimizer. Can be any nonnegative number.
 #' @param tol            Relative MIP optimality gap tolerance. Can be any nonnegative number. Default 1e-4.
-#' @param output.flag    Turn CPLEX output on (1) or off(0).           
-#' 
 #' @return               A list of objects that contain among other things,the least squares estimates at
 #'                       the regressors (within f.hat) and negative of the optimal objective function
 #'                       (within least.squares).  
@@ -31,41 +29,124 @@
 #' X = mvrnorm(n,rep(0,d), diag(d), tol=1e-06,empirical=FALSE)
 #' y = exp(-rowSums(X)) + rnorm(n)
 #'
-#' ret = Quasiconvex.cplex(X, y,   Monotone = "non.inc", Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06,  output.flag = 1)
-Quasiconvex.cplex <- function(X, y,   Monotone = c("non.inc", "non.dec","none"), Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06,  output.flag = 1){
+#' ret = Quasiconvex.cplex(X, y,   Monotone = "non.inc", Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06)
+#' 
+#' SOMABHA DO THIS!
+# Quasiconvex.reg <- function(X, y,   Monotone = c("non.inc", "non.dec","none"), optimizer = ("cplex", "gurobi"), Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06, ){
+Quasi.reg <- function(X, y, Shape = c("QuasiConvex", "QuasiConcave"),  Monotone = c("non.inc", "non.dec","none"), Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06, Init.start = NULL, optimizer = c("cplex", "gurobi")){
+
   if (!is.matrix(X)) X <- as.matrix(X)
   if (!is.vector(y)) y <- as.vector(y)
   dd <- ncol(X)
-  if( Monotone == "non.inc"){
-    Cons <-  QuasiConv.Dec.control(X, y, Max.b = Max.b, MM = MM, ep = ep )
+  if( !(Monotone %in% c("non.inc", "non.dec","none")) ){     
+    stop("Monotonicity constraint not correctly specified!")
   }
-  else if(Monotone=="none") {
-    Cons <-  QuasiConv.only.control(X, y, Max.b = Max.b, MM = MM, ep = ep )
+  if( !(Shape %in%  c("QuasiConvex", "QuasiConcave"))){   
+    stop("Shape must be either 'QuasiConvex' or 'QuasiConcave'.")
   }
-  else if(Monotone=="non.dec"){
-    Cons <-  QuasiConv.Inc.control(X, y, Max.b = Max.b, MM = MM, ep = ep )
+  if( !(optimizer %in% c("cplex", "gurobi"))){
+    stop("An optimizer (either 'cplex' or 'gurobi') must be chosen, installed, and loaded.")
   }
-  
-  t <- Sys.time()
-  out <- Rcplex(cvec = Cons$cvec, Amat = Cons$Amat, bvec = Cons$bvec, Qmat = Cons$Qmat, lb = Cons$lb, ub = Cons$ub, objsense = "min",sense = "L", vtype = Cons$vtype, control = list(tilim = time.limit ,epgap = tol, trace = output.flag)) 
-  opt.fhat <- out$xopt[(1:nrow(X))] 
-  opt.zeta <- out$xopt[(nrow(X)+1) : (nrow(X)+ nrow(X)*dd)] 
-  
-  t1 <- Sys.time()
-  ret <- list( out = out,
-               f.hat  =  opt.fhat,
-               zeta.hat = opt.zeta,
-               least.squares  =  -out$obj,
-               time  =  t1-t,
-               tol =  tol,
-               method = "cplex",
-               monotone = Monotone,
-               status = out$status);
+
+  if( optimizer == "cplex" && !is.null(Init.start)){
+    warning("Currently 'Rcplex' does not support initial value. 'Init.start' is ignored.")
+  }
+  if(!is.matrix(Init.start) && !is.null(Init.start)) Init.start <- as.matrix(Init.start, nrow=nrow(X))
+  if(Shape=="QuasiConvex"){
+    Cons <-  QuasiConv.control(X, y, Max.b = Max.b, MM = MM, ep = ep, Monotone= Monotone)
+  } else if (Shape == "QuasiConcave"){
+    if( Monotone == "non.inc"){
+      Monotone.inv <- "non.dec"  
+    } else if (Monotone == "non.dec"){
+      Monotone.inv <- "non.inc"  
+    } else {
+      Monotone.inv <- Monotone  
+    }
+    Cons <-  QuasiConv.control(X, -y, Max.b = Max.b, MM = MM, ep = ep, Monotone= Monotone.inv )
+  }
+  out.list <- fhat.list <- vector("list", 1)
+  obs.vec <-rep(0, 1)
+  if (optimizer == "cplex"){  
+    t <- Sys.time()
+    out.list[[1]]<- out <- Rcplex(cvec = Cons$cvec, Amat = Cons$Amat, bvec = Cons$bvec, Qmat = Cons$Qmat, lb = Cons$lb, ub = Cons$ub, objsense = "min",sense = "L", vtype = Cons$vtype, control = list(tilim = time.limit ,epgap = tol)) 
+    fhat.list[[1]] <- opt.fhat <- out$xopt[(1:nrow(X))] 
+    least.squares.loss<- obs.vec[1] <- out.list[[1]]$obj+sum(y^2)
+    # opt.zeta <- out$xopt[(nrow(X)+1) : (nrow(X)+ nrow(X)*dd)]
+    out$xopt <- out.list[[1]]$xopt <- out.list[[1]]$xopt[(1:nrow(X))]## Removing the zetas for memory purposes (If you need to access the zeta's then comment this line) 
+    t1 <- Sys.time()
+  } else if (optimizer== "gurobi"){
+    t <- Sys.time()
+    model<- list(obj = Cons$cvec, A = Cons$Amat, lb = Cons$lb, ub = Cons$ub, rhs = Cons$bvec, vtype = Cons$vtype, Qmat = 1/2*Cons$Qmat) ## QMAT had to be halved
+    params <- list()
+    params$TimeLimit <- time.limit
+    ## uses Initial starts to compute all estimates and chooses one of them
+    if(!is.null(Init.start)){
+      Init.start<- as.matrix(Init.start, nrow= nrow(X))
+      out.list  <- fhat.list <- vector("list", ncol(Init.start))
+      obs.vec <-rep(0, ncol(Init.start))
+      for (ii in 1:ncol(Init.start)){
+        cat("\rMultistart ", ii, " of ", ncol(Init.start), " done!")
+        cat("\n")
+        model$start = c(Init.start[,ii], rep(NA, nrow(X)*dd + nrow(X)^2 ))
+        out.list[[ii]] <- gurobi(model, params) 
+        fhat.list[[ii]] <- out.list[[ii]]$x[(1:nrow(X))] 
+        out.list[[ii]]$x <- out.list[[ii]]$x[(1:nrow(X))] ## Removing the zetas for memory purposes (If you need to access the zeta's then comment this line) 
+        obs.vec[ii]<- out.list[[ii]]$objval+sum(y^2)
+      }
+      out <- out.list[[which.min(obs.vec)]]
+      opt.fhat <- fhat.list[[which.min(obs.vec)]]
+      least.squares.loss <- min(obs.vec)
+    } else{
+        out.list[[1]]<- out <- gurobi(model, params) 
+        least.squares.loss<- obs.vec[1] <- out.list[[1]]$objval+sum(y^2)
+        fhat.list[[1]] <- opt.fhat <- out.list[[1]]$x[(1:nrow(X))] 
+        out.list[[1]]$x <- out.list[[1]]$x[(1:nrow(X))] ## Removing the zetas for memory purposes (If you need to access the zeta's then comment this line) 
+    }
+
+    t1 <- Sys.time()
+  }  
+  if(Shape=="QuasiConvex"){
+    f.hat <-  opt.fhat
+  } else if (Shape=="QuasiConcave") {
+    f.hat <-  -opt.fhat
+    fhat.list <- lapply(fhat.list, function(x) -x)
+  }
+  ret <- NULL
+  ret$out <-  out
+  ret$fhat  <-   f.hat
+  ret$minvalue  <-  least.squares.loss
+  ret$time  <-   t1-t
+  ret$tol <-   tol
+  ret$method <-  optimizer
+  ret$monotone <-  Monotone
+  ret$Shape <-  Shape
+  ret$status <-  out$status
+  ret$K <- which.min(obs.vec)
+  # Initial starts stored
+  ret$ObjValVec <- obs.vec
+  ret$OutList <- out.list
+  ret$FhatList <- fhat.list
+  ret$InitStart <- Init.start
   ret$call <- match.call()
-  class(ret) <- "Quasi.convex"
+
+  class(ret) <- "Quasi.reg"
   return(ret)
 }
 
+print.Quasi.reg <- function(x,...){
+  cat("Call:\n")
+  print(x$call)
+  cat("Estimate of f is:\n")
+  print(x$fhat)
+  cat("Number of Starting Vectors:\n")
+  print(ncol(x$InitStart))
+  cat("Initial vector leading to the minimum:\n")
+  print(x$InitStart[,x$K])
+  cat("Minimum Criterion Value Obtained:\n")
+  print(x$minvalue)
+  cat("Convergence Status:\n")
+  print(x$out$status)
+}
 
 
 
@@ -270,18 +351,18 @@ chulldowncheck<-function(X,test){
 
 
 
-#'Assumes that cplex.fhat is a decreasing/increasing/simple quasiconvex,
+#'Assumes that fin is a decreasing/increasing/simple quasiconvex,
 #'fit obtained from the matrix X of regressors and some response vector.
-#'This function will take as inputs, the matrix X, the fitted vector cplex.fhat, 
+#'This function will take as inputs, the matrix X, the fitted vector fin, 
 #'a matrix nondatapoint_matrix whose rows may not be among those of X, and a 
 #'categorical variable Monotone which denotes the type of regression in terms of 
 #'monotonicity. It will return a quasiconvex and monotone (type of monotonicity
 #'determined by the user entered option for the variable Monotone) function
 #'evaluated at the rows of the matrix nondatapoint_matrix, which is an 
-#'extrapolation of the fitted values in the vector cplex.fhat.
+#'extrapolation of the fitted values in the vector fin.
 #'
 #' @param X                         An n by d matrix of regressors.
-#' @param cplex.fhat                An n by 1 vector of fitted values.
+#' @param fin                An n by 1 vector of fitted values.
 #' @param nondatapoint_matrix       An N by d matrix whose rows may not be among the rows of X.
 #' @param Monotone                  A categorical variable denoting the type of regression in terms of monotonicity.
 #'                                  The user must input one of the following three types:
@@ -292,38 +373,42 @@ chulldowncheck<-function(X,test){
 #' @return                          A vector, representing a quasiconvex and monotone (type of monotonicity
 #'                                  determined by the user entered option for the input variable Monotone) 
 #'                                  function evaluated at the rows of the matrix nondatapoint_matrix, 
-#'                                  which is an extrapolation of the fitted values in the vector cplex.fhat.          
+#'                                  which is an extrapolation of the fitted values in the vector fin.          
 #' @examples
 #' library(MASS)
 #' X = mvrnorm(20,rep(0,8), diag(8), tol=1e-06,empirical=FALSE)
 #' y = exp(-rowSums(X)) + rnorm(20)
 #'
-#' ret = Quasiconvex.cplex(X, y,   Monotone = "non.inc", Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06,  output.flag = 1)
+#' ret = Quasiconvex.cplex(X, y,   Monotone = "non.inc", Max.b = 10^4, MM =10^4, ep =0.001,  time.limit= 200, tol =  1e-06)
 #' Xnondata = mvrnorm(60,rep(0,8), diag(8), tol=1e-06,empirical=FALSE)
 #' X = rbind(X,Xnondata)
 #' out=interpolation.matrix.func(X,ret$f.hat,Xnondata,Monotone="non.inc")
 
-interpolation.matrix.func<-function(X,cplex.fhat,nondatapoint_matrix,Monotone = c("non.inc", "non.dec","none"))
+interpolation.matrix.func<-function(X,fin,nondatapoint_matrix,Shape = c("QuasiConvex", "QuasiConcave","none"),Monotone = c("non.inc", "non.dec","none"))
 {
-  rr<-nrow(nondatapoint_matrix)
-  out<-rep(0,rr)
-  if( Monotone == "non.inc")
+  int.f<-function(ndp)
   {
-    for(i in 1:rr){
-      out[i]<-interpol.func.Dec(X,cplex.fhat,nondatapoint_matrix[i,])
-    }
+    return(interpol.func(X,fin,ndp,Shape,Monotone))
   }
-  else if( Monotone == "non.dec")
-  {
-    for(i in 1:rr){
-      out[i]<-interpol.func.Inc(X,cplex.fhat,nondatapoint_matrix[i,])
-    }
-  }
-  else if( Monotone == "none")
-  {
-    for(i in 1:rr){
-      out[i]<-interpol.func(X,cplex.fhat,nondatapoint_matrix[i,])
-    }
-  }
-  return(out)
+  return(apply(nondatapoint_matrix,1,int.f))
 }
+
+# ##Monotone Example
+# monotonegrid<-function(n)
+# {
+# m<-matrix(0,n^2,2)
+# for(i in 0:(n-1)){for(j in 1:n){m[(n*i)+j,2]<-i}}
+# for(i in 0:(n-1)){for(j in 1:n){m[(n*i)+j,1]<-j-1}}
+# return(m)
+# }
+
+# monotone_example<-function(m)
+# {
+#   u<-as.matrix(rowSums(m))
+#   return(as.matrix(cbind(m,u)))
+# }
+
+# m<-monotonegrid(10)
+# mfull<-monotone_example(m)
+
+

@@ -5,15 +5,14 @@ https://arxiv.org/abs/2003.04433
 
 To download the R package use the following in R:
 
-
 ```
 library(devtools)
 install_github(repo = "somabhamukherjee/QuasiconvexLSE")
 library(QuasiconvexLSE)
 ```
 
-Note that the above package requires CPLEX and the R-package RCPLEX. 
-Files in the folder titled "ReplicationCode" replicate Figure 5 of https://arxiv.org/abs/2003.04433. 
+Note that the above package requires an installation CPLEX or Gurobi and the R-package RCPLEX/gurobi 
+Files in the folder titled "ReplicationCode" replicate Figure 5, 6, and 7 of https://arxiv.org/abs/2003.04433. 
 
 **References**
 
